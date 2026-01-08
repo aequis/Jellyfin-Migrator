@@ -62,6 +62,7 @@ import os
 # Text encoding is UTF-8 (in npp selectable under "Encoding -> UTF-8")
 log_file = "D:/jf-migrator.log"
 
+log_backup_count = 20
 
 # These paths will be processed in the order they're listed here.
 # This can be very important! F.ex. if specific subfolders go to a different
@@ -1308,10 +1309,43 @@ def check_disk_space(src_root: Path, tgt_root: Path):
         print_log("Disk space check passed.")
         print_log("")
 
+def rotate_logs():
+    global log_file, log_backup_count
+
+    log_path = Path(log_file)
+    if not log_path.exists():
+        return
+
+    print("Rotating log files...")
+
+    oldest_log = log_path.with_name(f"{log_path.name}.{log_backup_count}")
+    if oldest_log.exists():
+        try:
+            oldest_log.unlink()
+        except OSError as e:
+            print(f"Warning: Could not delete old log {oldest_log}: {e}")
+
+    for log_i in range(log_backup_count - 1, 0, -1):
+        src = log_path.with_name(f"{log_path.name}.{log_i}")
+        dst = log_path.with_name(f"{log_path.name}.{log_i+1}")
+        if src.exists():
+            try:
+                src.replace(dst)
+            except OSError:
+                pass
+
+    if log_path.exists():
+        try:
+            log_path.replace(log_path.with_name(f"{log_path.name}.1"))
+        except OSError as e:
+            print(f"Warning: Could not rotate current log: {e}")
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Jellyfin Migrator')
     parser.add_argument('--reset', action='store_true', help='Reset progress and start over')
     args = parser.parse_args()
+
+    rotate_logs()
 
     print_log("")
     print_log("Starting Jellyfin Database Migration")
