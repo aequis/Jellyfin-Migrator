@@ -1358,6 +1358,24 @@ if __name__ == "__main__":
 
     if "step_paths" in completed_steps:
         print_log("Step 1 (Path Migration) already completed. Skipping.")
+
+        found_db = False
+        for job in todo_list_paths:
+            if job["source"].name == "jellyfin.db":
+                library_db_source_path = job["source"]
+                library_db_target_path = get_target(
+                    source=job["source"],
+                    target=job["target"],
+                    replacements=job["replacements"],
+                    no_log=True
+                )
+                print_log(f"Restored DB target path for resume: {library_db_target_path}")
+                found_db = True
+                break
+        if not found_db:
+            print_log("Error: Could not determine location of jellyfin.db to resume.")
+            print_log("Please run with --reset to start fresh.")
+            sys.exit(1)
     else:
         print_log(">>> Executing Step 1: Copying files and updating paths...")
         process_files(
