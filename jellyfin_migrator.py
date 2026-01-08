@@ -89,11 +89,10 @@ path_replacements = {
     # Paths to the different parts of the jellyfin database. Determine these
     # by comparing your existing installation with the paths in your new
     # installation.
-    "C:/ProgramData/Jellyfin/Server/config": "/Users/user/Library/Application Support/jellyfin",
+    "C:/ProgramData/Jellyfin/Server": "/Users/user/Library/Application Support/jellyfin",
+    "C:/ProgramData/Jellyfin/Server/config": "/Users/user/Library/Application Support/jellyfin/config",
     "C:/ProgramData/Jellyfin/Server/cache": "/Users/user/Library/Application Support/jellyfin/cache",
     "C:/ProgramData/Jellyfin/Server/log": "/Users/user/Library/Application Support/jellyfin/log",
-    "C:/ProgramData/Jellyfin/Server": "/Users/user/Library/Application Support/jellyfin/data", # everything else: metadata, plugins, ...
-    "C:/ProgramData/Jellyfin/Server/transcodes": "/Users/user/Library/Application Support/jellyfin/data/transcodes",
     "C:/Program Files/Jellyfin/Server/ffmpeg.exe": "/Users/user/bin/jellyfin-ffmpeg/ffmpeg", # adjust ffmpeg path
     "%AppDataPath%": "/Users/user/Library/Application Support/jellyfin/data",
     "%MetadataPath%": "/Users/user/Library/Application Support/jellyfin/metadata",
