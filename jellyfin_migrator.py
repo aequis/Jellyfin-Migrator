@@ -1250,6 +1250,64 @@ def reset_state():
         os.remove(STATE_FILE)
     print_log("Progress reset. Script will start from the beginning.")
 
+
+def check_disk_space(src_root: Path, tgt_root: Path):
+    import shutil
+
+    print_log("Checking disk space requirements...")
+
+    def get_tree_size(path):
+        total_size = 0
+        try:
+            for p in path.rglob('*'):
+                if p.is_file():
+                    total_size += p.stat().st_size
+        except OSError:
+            pass
+        return total_size
+
+    if not src_root.exists():
+        print_log(f"Error: Source root {src_root} does not exist.")
+        sys.exit(1)
+
+    print_log("Calculating source size...", end=" ")
+    src_size = get_tree_size(src_root)
+    print_log(f"{src_size / (1024**3):.2f} GB")
+
+    tgt_size = 0
+    if tgt_root.exists():
+        print_log("Calculating existing target size (progress)...", end=" ")
+        tgt_size = get_tree_size(tgt_root)
+        print_log(f"{tgt_size / (1024**3):.2f} GB")
+
+    remaining_size = max(0, src_size - tgt_size)
+
+    safety_buffer = (remaining_size * 0.10) + (500 * 1024 * 1024)
+    required_space = remaining_size + safety_buffer
+
+    check_path = tgt_root
+    while not check_path.exists():
+        check_path = check_path.parent
+
+    total, used, free = shutil.disk_usage(check_path)
+
+    print_log(f"------------------------------------------------")
+    print_log(f"Est. Remaining Data to Copy: {remaining_size / (1024**3):.2f} GB")
+    print_log(f"Safety Buffer:               {safety_buffer / (1024**3):.2f} GB")
+    print_log(f"TOTAL Required Free Space:   {required_space / (1024**3):.2f} GB")
+    print_log(f"Actual Available Space:      {free / (1024**3):.2f} GB")
+    print_log(f"------------------------------------------------")
+
+    if free < required_space:
+        print_log("WARNING: It looks like you do not have enough disk space.")
+        response = input("Do you want to continue anyway? [y/N] ")
+        if response.lower() != 'y':
+            print_log("Aborting.")
+            sys.exit(1)
+    else:
+        print_log("Disk space check passed.")
+        print_log("")
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Jellyfin Migrator')
     parser.add_argument('--reset', action='store_true', help='Reset progress and start over')
@@ -1260,6 +1318,8 @@ if __name__ == "__main__":
 
     if args.reset:
         reset_state()
+
+    check_disk_space(source_root, target_root)
 
     completed_steps = load_state()
 
