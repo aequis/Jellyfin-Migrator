@@ -79,21 +79,21 @@ path_replacements = {
     # Self-explanatory, I guess. "\\" if migrating *to* Windows, "/" else.
     "target_path_slash": "/",
     # Paths to your libraries
-    "D:/Serien": "/data/tvshows",
-    "F:/Serien": "/data/tvshows",
-    "F:/Filme": "/data/movies",
-    "F:/Musik": "/data/music",
+    "G:/media/anime": "/Volumes/storage_g/media/anime",
+    "G:/media/cartoons": "/Volumes/storage_g/media/cartoons",
+    "G:/media/movies": "/Volumes/storage_g/media/movies",
+    "G:/media/series": "/Volumes/storage_g/media/series",
     # Paths to the different parts of the jellyfin database. Determine these
     # by comparing your existing installation with the paths in your new
     # installation.
-    "C:/ProgramData/Jellyfin/Server/config": "/config",
-    "C:/ProgramData/Jellyfin/Server/cache": "/config/cache",
-    "C:/ProgramData/Jellyfin/Server/log": "/config/log",
-    "C:/ProgramData/Jellyfin/Server": "/config/data", # everything else: metadata, plugins, ...
-    "C:/ProgramData/Jellyfin/Server/transcodes": "/config/data/transcodes",
-    "C:/Program Files/Jellyfin/Server/ffmpeg.exe": "usr/lib/jellyfin-ffmpeg/ffmpeg",
-    "%MetadataPath%": "%MetadataPath%",
-    "%AppDataPath%": "%AppDataPath%",
+    "C:/ProgramData/Jellyfin/Server/config": "/Users/user/Library/Application Support/jellyfin",
+    "C:/ProgramData/Jellyfin/Server/cache": "/Users/user/Library/Application Support/jellyfin/cache",
+    "C:/ProgramData/Jellyfin/Server/log": "/Users/user/Library/Application Support/jellyfin/log",
+    "C:/ProgramData/Jellyfin/Server": "/Users/user/Library/Application Support/jellyfin/data", # everything else: metadata, plugins, ...
+    "C:/ProgramData/Jellyfin/Server/transcodes": "/Users/user/Library/Application Support/jellyfin/data/transcodes",
+    "C:/Program Files/Jellyfin/Server/ffmpeg.exe": "/Users/user/bin/jellyfin-ffmpeg/ffmpeg", # adjust ffmpeg path
+    "%AppDataPath%": "/Users/user/Library/Application Support/jellyfin/data",
+    "%MetadataPath%": "/Users/user/Library/Application Support/jellyfin/metadata",
 }
 
 
@@ -120,12 +120,8 @@ path_replacements = {
 fs_path_replacements = {
     "log_no_warnings": False,
     "target_path_slash": "/",
-    "/config": "/",
-    "%AppDataPath%": "/data/data",
-    "%MetadataPath%": "/data/metadata",
-    "/data/tvshows": "Y:/Serien",
-    "/data/movies": "Y:/Filme",
-    "/data/music": "Y:/Musik",
+    "%AppDataPath%": "/Users/user/Library/Application Support/jellyfin/data",
+    "%MetadataPath%": "/Users/user/Library/Application Support/jellyfin/metadata",
 }
 
 
@@ -170,46 +166,38 @@ target_root = Path("D:/Jellyfin-dummy")
 #   where you can select the types to include.
 todo_list_paths = [
     {
-        "source": source_root / "data/library.db",
-        "target": "auto",                      # Usually you want to leave this on auto. If you want to work on the source file, set it to the same path (YOU SHOULDN'T!).
-        "replacements": path_replacements,     # Usually same for all but you could specify a specific one per db.
-        "tables": {
-            "TypedBaseItems": {        # Name of the table within the SQLite database file
-                "path_columns": [      # All column names that can contain paths.
-                    "path",
-                ],
-                "jf_image_columns": [  # All column names that can jellyfins "image paths mixed with image properties" strings.
-                    "Images",
-                ],
-                "json_columns": [      # All column names that can contain json data with paths.
-                    "data",
-                ],
-            },
-            "mediastreams": {
-                "path_columns": [
-                    "Path",
-                ],
-            },
-            "Chapters2": {
-                "jf_image_columns": [
-                    "ImagePath",
-                ],
-            },
-        },
-    },
-    {
         "source": source_root / "data/jellyfin.db",
         "target": "auto",
         "replacements": path_replacements,
         "tables": {
-            "ImageInfos": {
+            # CHANGED: TypedBaseItems -> BaseItems
+            "BaseItems": {
+                "path_columns": [
+                    "Path", 
+                ],
+                # REMOVED: "Images" and "data" columns no longer exist here in 10.11+
+            },
+            # CHANGED: mediastreams -> MediaStreamInfos
+            "MediaStreamInfos": {
                 "path_columns": [
                     "Path",
                 ],
             },
+            # CHANGED: Chapters2 -> Chapters
+            "Chapters": {
+                "jf_image_columns": [
+                    "ImagePath",
+                ],
+            },
+            # NEW: Explicit table for images
+            "ImageInfos": {
+                 "path_columns": [
+                    "Path",
+                ],
+            }
         },
     },
-    # Copy all other .db files. Since it's copy-only (no path adjustments), omit the log output.
+    # Copy all other .db files. 
     {
         "source": source_root / "data/*.db",
         "target": "auto",
@@ -217,46 +205,37 @@ todo_list_paths = [
         "copy_only": True,
         "no_log": True,
     },
-
     {
         "source": source_root / "plugins/**/*.json",
         "target": "auto",
         "replacements": path_replacements,
     },
-
     {
         "source": source_root / "config/*.xml",
         "target": "auto",
         "replacements": path_replacements,
     },
-
     {
         "source": source_root / "metadata/**/*.nfo",
         "target": "auto",
         "replacements": path_replacements,
     },
-
     {
-        # .xml, .mblink, .collection files are here.
         "source": source_root / "root/**/*.*",
         "target": "auto",
         "replacements": path_replacements,
     },
-
     {
         "source": source_root / "data/collections/**/collection.xml",
         "target": "auto",
         "replacements": path_replacements,
     },
-
     {
         "source": source_root / "data/playlists/**/playlist.xml",
         "target": "auto",
         "replacements": path_replacements,
     },
-
-    # Lastly, copy anything that's left. Any file that's already been processed/copied is skipped
-    # ... you should delete the cache and the logs though.
+    # Lastly, copy anything that's left.
     {
         "source": source_root / "**/*.*",
         "target": "auto",
@@ -272,57 +251,55 @@ todo_list_paths = [
 # The ID replacements are determined automatically.
 todo_list_id_paths = [
     {
-        "source": source_root / "data/library.db",
-        "target": "auto-existing",             # If you used "auto" in todo_list_paths, leave this on "auto-existing". Otherwise specify same path.
-        "replacements": {"oldids": "newids"},  # Will be auto-generated during the migration.
+        "source": source_root / "data/jellyfin.db",
+        "target": "auto-existing",
+        "replacements": {"oldids": "newids"},
         "tables": {
-            "TypedBaseItems": {        # Name of the table within the SQLite database file
-                "path_columns": [      # All column names that can contain paths.
-                    "path",
-                ],
-                "jf_image_columns": [  # All column names that can jellyfins "image paths mixed with image properties" strings.
-                    "Images",
-                ],
-                "json_columns": [      # All column names that can contain json data with paths OR IDs!!
-                    "data",
-                ],
-            },
-            "mediastreams": {
+            "BaseItems": { 
                 "path_columns": [
                     "Path",
                 ],
             },
-            "Chapters2": {
+            "MediaStreamInfos": {
+                "path_columns": [
+                    "Path",
+                ],
+            },
+            "Chapters": {
                 "jf_image_columns": [
                     "ImagePath",
                 ],
             },
+            "ImageInfos": {
+                 "path_columns": [
+                    "Path",
+                ],
+            }
         },
     },
 
     {
         "source": source_root / "config/*.xml",
-        "target": "auto-existing",             # If you used "auto" in todo_list_paths, leave this on "auto-existing". Otherwise specify same path.
-        "replacements": {"oldids": "newids"},  # Will be auto-generated during the migration.
+        "target": "auto-existing",
+        "replacements": {"oldids": "newids"},
     },
 
     {
         "source": source_root / "metadata/**/*",
-        "target": "auto-existing",             # If you used "auto" in todo_list_paths, leave this on "auto-existing". Otherwise specify same path.
-        "replacements": {"oldids": "newids"},  # Will be auto-generated during the migration.
+        "target": "auto-existing",
+        "replacements": {"oldids": "newids"},
     },
 
     {
-        # .xml, .mblink, .collection files are here.
         "source": source_root / "root/**/*",
-        "target": "auto-existing",             # If you used "auto" in todo_list_paths, leave this on "auto-existing". Otherwise specify same path.
-        "replacements": {"oldids": "newids"},  # Will be auto-generated during the migration.
+        "target": "auto-existing",
+        "replacements": {"oldids": "newids"},
     },
 
     {
         "source": source_root / "data/**/*",
-        "target": "auto-existing",             # If you used "auto" in todo_list_paths, leave this on "auto-existing". Otherwise specify same path.
-        "replacements": {"oldids": "newids"},  # Will be auto-generated during the migration.
+        "target": "auto-existing",
+        "replacements": {"oldids": "newids"},
     },
 ]
 
@@ -331,7 +308,7 @@ todo_list_id_paths = [
 # The ID replacements are determined automatically.
 todo_list_ids = [
     {
-        "source": source_root / "data/library.db",
+        "source": source_root / "data/jellyfin.db",
         "target": "auto-existing",             # If you used "auto" in todo_list_paths, leave this on "auto-existing". Otherwise specify same path.
         "replacements": {"oldids": "newids"},  # Will be auto-generated during the migration.
         "tables": {
@@ -347,34 +324,22 @@ todo_list_ids = [
                     "AncestorId",
                 ],
             },
-            "Chapters2": {
-                "str": [],
-                "str-dash": [],
-                "ancestor-str": [],
-                "ancestor-str-dash": [],
+            "Chapters": { # Changed from Chapters2
                 "bin": [
                     "ItemId",
                 ],
             },
             "ItemValues": {
-                "str": [],
-                "str-dash": [],
-                "ancestor-str": [],
-                "ancestor-str-dash": [],
                 "bin": [
                     "ItemId",
                 ],
             },
-            "People": {
-                "str": [],
-                "str-dash": [],
-                "ancestor-str": [],
-                "ancestor-str-dash": [],
+            "Peoples": { # Changed from People
                 "bin": [
                     "ItemId",
                 ],
             },
-            "TypedBaseItems": {
+            "BaseItems": { # Changed from TypedBaseItems
                 "str": [],
                 "str-dash": [],
                 "ancestor-str": [
@@ -387,36 +352,23 @@ todo_list_ids = [
                     "ExtraIds",
                 ],
                 "bin": [
-                    "guid",
+                    # guid likely changed to Id. 
+                    # If migration fails here, check column names using debug script.
+                    "Id", 
                     "ParentId",
                     "SeasonId",
                     "SeriesId",
                     "OwnerId"
                 ],
             },
-            "UserDatas": {
-                "str": [],
-                "str-dash": [],
-                "ancestor-str": [],
+            "UserData": { # Changed from UserDatas
                 "ancestor-str-dash": [
-                    "key",
+                    "Key", # Case sensitive check might be needed
                 ],
                 "bin": [],
             },
-            "mediaattachments": {
-                "str": [],
-                "str-dash": [],
-                "ancestor-str": [],
-                "ancestor-str-dash": [],
-                "bin": [
-                    "ItemId",
-                ],
-            },
-            "mediastreams": {
-                "str": [],
-                "str-dash": [],
-                "ancestor-str": [],
-                "ancestor-str-dash": [],
+            # mediaattachments seems missing list, removing or leaving empty
+            "MediaStreamInfos": { # Changed from mediastreams
                 "bin": [
                     "ItemId",
                 ],
@@ -442,7 +394,7 @@ todo_list_ids = [
 ]
 
 
-# Since library.db will be needed throughout the process, its location is stored
+# Since jellyfin.db will be needed throughout the process, its location is stored
 # here once it's been moved and updated with the new paths.
 library_db_target_path = Path()
 library_db_source_path = Path()
@@ -896,8 +848,8 @@ def process_file(
         # No need to do any further checks.
         return
     elif target.suffix == ".db":
-        # If it's "library.db", save it for later (see comment at declaration):
-        if target.name == "library.db":
+        # If it's "jellyfin.db", save it for later (see comment at declaration):
+        if target.name == "jellyfin.db":
             global library_db_source_path, library_db_target_path
             library_db_source_path = source
             library_db_target_path = target
@@ -1088,7 +1040,7 @@ def get_ids():
     cur = con.cursor()
 
     id_replacements_bin = dict()
-    for guid, item_type, path in cur.execute("SELECT `guid`, `type`, `Path` FROM `TypedBaseItems`"):
+    for guid, item_type, path in cur.execute("SELECT `Id`, `type`, `Path` FROM `BaseItems`"):
         if not path or path.startswith("%"):
             continue
 
