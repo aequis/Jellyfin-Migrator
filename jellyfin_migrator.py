@@ -1342,6 +1342,7 @@ def rotate_logs():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Jellyfin Migrator')
     parser.add_argument('--reset', action='store_true', help='Reset progress and start over')
+    parser.add_argument('--skip-disk-check', action='store_true', help='Skip the free space calculation')
     args = parser.parse_args()
 
     rotate_logs()
@@ -1352,7 +1353,10 @@ if __name__ == "__main__":
     if args.reset:
         reset_state()
 
-    check_disk_space(source_root, target_root)
+    if args.skip_disk_check:
+        print_log("Skipping disk space check as requested.")
+    else:
+        check_disk_space(source_root, target_root)
 
     completed_steps = load_state()
 
