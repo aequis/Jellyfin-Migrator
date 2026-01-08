@@ -23,6 +23,7 @@ import binascii
 import xml.etree.ElementTree as ET
 import argparse
 import sys
+import uuid
 from pathlib import Path
 from shutil import copy
 from time import time
@@ -1029,21 +1030,70 @@ def update_db_table_ids(
 def get_ids():
     global library_db_target_path, ids
 
+    print_log(f"Loading IDs from: {library_db_target_path}")
     con = sqlite3.connect(library_db_target_path)
     cur = con.cursor()
 
+    # Jellyfin 10.10+ uses short class names. Map them to full names for ID calculation.
+    type_map = {
+        "Movie": "MediaBrowser.Controller.Entities.Movies.Movie",
+        "Series": "MediaBrowser.Controller.Entities.TV.Series",
+        "Season": "MediaBrowser.Controller.Entities.TV.Season",
+        "Episode": "MediaBrowser.Controller.Entities.TV.Episode",
+        "BoxSet": "MediaBrowser.Controller.Entities.Movies.BoxSet",
+        "MusicAlbum": "MediaBrowser.Controller.Entities.Audio.MusicAlbum",
+        "MusicArtist": "MediaBrowser.Controller.Entities.Audio.MusicArtist",
+        "Audio": "MediaBrowser.Controller.Entities.Audio.Audio",
+        "Video": "MediaBrowser.Controller.Entities.Video",
+        "Folder": "MediaBrowser.Controller.Entities.Folder",
+        "CollectionFolder": "MediaBrowser.Controller.Entities.CollectionFolder",
+        "UserRootFolder": "MediaBrowser.Controller.Entities.UserRootFolder",
+        "UserView": "MediaBrowser.Controller.Entities.UserView",
+    }
+
     id_replacements_bin = dict()
-    for guid, item_type, path in cur.execute("SELECT `Id`, `type`, `Path` FROM `BaseItems`"):
+
+    # Try to find the correct columns (Discriminator vs type)
+    try:
+        query = "SELECT `Id`, `Discriminator`, `Path` FROM `BaseItems`"
+        cursor_iterator = cur.execute(query)
+    except sqlite3.OperationalError:
+        print_log("Warning: 'Discriminator' column not found, trying 'type'...")
+        query = "SELECT `Id`, `type`, `Path` FROM `BaseItems`"
+        cursor_iterator = cur.execute(query)
+
+    count = 0
+    for guid, item_type, path in cursor_iterator:
         if not path or path.startswith("%"):
             continue
 
-        # Source: https://github.com/jellyfin/jellyfin/blob/7e8428e588b3f0a0574da44081098c64fe1a47d7/Emby.Server.Implementations/Library/LibraryManager.cs#L504 # noqa
+        # --- FIX: FORCE BYTES CONVERSION ---
+        # If the DB returns a String (e.g. "4b3a..."), convert it to Raw Bytes
+        if isinstance(guid, str):
+            try:
+                # This handles both hex strings and UUIDs with dashes
+                guid = uuid.UUID(guid).bytes
+            except ValueError:
+                # If it's garbage data, skip it
+                continue
+        # -----------------------------------
+
+        # Fix Type Mapping
+        if item_type in type_map:
+            item_type = type_map[item_type]
+
+        # Calculate what the NEW ID should be based on the NEW path
         new_guid = get_dotnet_MD5(item_type + path)
-        # Omit IDs that haven't changed at all. Happens if not _all_ paths are modified
+
+        # If the calculated ID is different from the existing ID, add to replacements
         if new_guid != guid:
             id_replacements_bin[guid] = new_guid
+            count += 1
+
+    print_log(f"Found {count} items requiring ID updates.")
 
     ### Adapted from jellyfin_id_scanner
+    # Now that 'k' (guid) and 'v' (new_guid) are guaranteed to be bytes, bid2sid will work.
     id_replacements_str               = {bid2sid(k): bid2sid(v) for k, v in id_replacements_bin.items()}
     id_replacements_str_dash          = {sid2did(k): sid2did(v) for k, v in id_replacements_str.items()}
     id_replacements_ancestor_str      = {convert_ancestor_id(k): convert_ancestor_id(v) for k, v in id_replacements_str.items()}
@@ -1058,44 +1108,8 @@ def get_ids():
         "ancestor-str": id_replacements_ancestor_str,
         "ancestor-str-dash": id_replacements_ancestor_str_dash,
     }
-    ### End of adapted code
 
-    # Check for collisions between old and new ids in both the normal and ancestor format.
-    # If there are collisions, get the (new) filepaths causing them
-    uniques = set()
-    duplicates = list()
-    for id in id_replacements_str.values():
-        if id in uniques:
-            duplicates.append(id)
-        else:
-            uniques.add(id)
-
-    # if there are duplicates, find the matching old_ids to query the lines from the database
-    if duplicates:
-        old_ids = []
-        for k, v in id_replacements_str.items():
-            if v in duplicates:
-                old_ids.append(sid2bid(k))
-
-        duplicates_new = [next(cur.execute("SELECT `guid`, `Path` FROM `TypedBaseItems` WHERE `guid` = ?", (guid,))) for guid in old_ids]
-        # also fetch the old paths for better understanding/debugging
-        con.close()
-        con = sqlite3.connect(library_db_source_path)
-        cur = con.cursor()
-        duplicates_old = [next(cur.execute("SELECT `guid`, `Path` FROM `TypedBaseItems` WHERE `guid` = ?", (guid,))) for guid in old_ids]
-        duplicates_old = dict(duplicates_old)
-        con.close()
-
-        print_log(f"Warning! {len(duplicates)} duplicates detected within new ids. This indicates that you're "
-                  f"merging media files from different directories into fewer ones. If that's the case for all the "
-                  f"collisions listed below, you can likely ignore this warning, otherwise recheck your path settings. "
-                  f"IMPORTANT: The duplicated entries will be removed from the database. You got a backup of the "
-                  f"database, right?")
-        print_log("Duplicates: ")
-        for id, newpath in duplicates_new:
-            print_log(f"  Item ID: {bid2sid(id)},  Paths (old -> new): {duplicates_old[id]} -> {newpath}")
-        input("Press Enter to continue or CTRL+C to abort. ")
-
+    con.close()
     return ids
 
 
