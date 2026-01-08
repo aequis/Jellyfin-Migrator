@@ -395,9 +395,30 @@ ids = dict()
 
 
 # Custom print function that prints to both the console as well as to a log file
+# Uses buffered I/O for performance - file handle kept open
 logging_newline = False
+_log_file_handle = None
+_log_write_count = 0
+
+def _get_log_handle():
+    global _log_file_handle, log_file
+    if _log_file_handle is None:
+        _log_file_handle = open(log_file, "a", encoding="utf-8", buffering=8192)
+    return _log_file_handle
+
+def _flush_log():
+    global _log_file_handle
+    if _log_file_handle is not None:
+        _log_file_handle.flush()
+
+def _close_log():
+    global _log_file_handle
+    if _log_file_handle is not None:
+        _log_file_handle.close()
+        _log_file_handle = None
+
 def print_log(*args, **kwargs):
-    global log_file, logging_newline
+    global logging_newline, _log_write_count
     print(*args, **kwargs)
 
     # Each new line gets a timestamp. That requires tracking of (previous)
@@ -410,8 +431,15 @@ def print_log(*args, **kwargs):
         logging_newline = True
     else:
         logging_newline = False
-    with open(log_file, "a", encoding="utf-8") as f:
-        print(dt, *args, **kwargs, file=f)
+
+    f = _get_log_handle()
+    print(dt, *args, **kwargs, file=f)
+
+    # Flush every 100 writes to balance performance with data safety
+    _log_write_count += 1
+    if _log_write_count >= 100:
+        f.flush()
+        _log_write_count = 0
 
 
 # Recursively replace all paths in "d" which can be
@@ -895,6 +923,12 @@ def process_file(
 # automatic, wildcard copy in your todo_list that just copies the files
 # to the (modified) destinations without processing them and without
 # modifying those that have already been copied _and_ modified.
+# Processes the todo_list.
+# It handles potential wildcards in the file paths and keeps track
+# which files have already been processed. This allows you to have an
+# automatic, wildcard copy in your todo_list that just copies the files
+# to the (modified) destinations without processing them and without
+# modifying those that have already been copied _and_ modified.
 # Obviously this requires you to have the files that need processing
 # first in the todo_list and only then the wildcard copies.
 #
@@ -915,6 +949,12 @@ def process_files(lst: list, process_func, replace_func, path_replacements):
             # to convert them to a string...
             # It is expected that all these paths are relative to source_root.
             source = source.relative_to(source_root)
+
+            # For bulk operations with no_log, show periodic progress
+            file_count = 0
+            bytes_copied = 0
+            last_progress_time = time()
+
             for src in source_root.glob(str(source)):
                 if src.is_dir():
                     continue
@@ -922,6 +962,20 @@ def process_files(lst: list, process_func, replace_func, path_replacements):
                     # File has already been processed by this script.
                     continue
                 done.add(src)
+
+                # Track file size for progress reporting
+                if job["no_log"]:
+                    try:
+                        bytes_copied += src.stat().st_size
+                    except OSError:
+                        pass
+                    file_count += 1
+
+                    # Show progress every 2 seconds for bulk operations
+                    now = time()
+                    if now - last_progress_time >= 2:
+                        print_log(f"  Progress: {file_count} files, {bytes_copied / (1024*1024):.1f} MB copied...")
+                        last_progress_time = now
 
                 target = get_target(
                     source=src,
@@ -937,6 +991,10 @@ def process_files(lst: list, process_func, replace_func, path_replacements):
                     target=target,
                     **{k: v for k, v in job.items() if k not in ("source", "target")},
                 )
+
+            # Final summary for bulk operations
+            if job["no_log"] and file_count > 0:
+                print_log(f"  Completed: {file_count} files, {bytes_copied / (1024*1024):.1f} MB total")
         else:
             # No wildcards, process the path directly - if it hasn't already
             # been processed.
@@ -1483,3 +1541,5 @@ if __name__ == "__main__":
 
     print_log("")
     print_log("Jellyfin Database Migration complete.")
+    _flush_log()
+    _close_log()
