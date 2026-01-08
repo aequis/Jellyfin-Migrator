@@ -311,76 +311,63 @@ todo_list_id_paths = [
 todo_list_ids = [
     {
         "source": source_root / "data/jellyfin.db",
-        "target": "auto-existing",             # If you used "auto" in todo_list_paths, leave this on "auto-existing". Otherwise specify same path.
-        "replacements": {"oldids": "newids"},  # Will be auto-generated during the migration.
+        "target": "auto-existing",
+        "replacements": {"oldids": "newids"},
         "tables": {
             "AncestorIds": {
-                "str": [],
-                "str-dash": [],
-                "ancestor-str": [
-                    "AncestorIdText",
-                ],
-                "ancestor-str-dash": [],
-                "bin": [
+                "str": [
                     "ItemId",
-                    "AncestorId",
+                    "ParentItemId"
                 ],
+                "str-dash": [], "ancestor-str": [], "ancestor-str-dash": [], "bin": [],
             },
-            "Chapters": { # Changed from Chapters2
-                "bin": [
-                    "ItemId",
+            "Chapters": {
+                "str": ["ItemId"],
+                "str-dash": [], "ancestor-str": [], "ancestor-str-dash": [], "bin": [],
+            },
+            # CHANGED: ItemValues -> ItemValuesMap (The mapping table holds the IDs)
+            "ItemValuesMap": {
+                "str": ["ItemId"],
+                "str-dash": [], "ancestor-str": [], "ancestor-str-dash": [], "bin": [],
+            },
+            # CHANGED: Peoples -> PeopleBaseItemMap (The mapping table holds the IDs)
+            "PeopleBaseItemMap": {
+                "str": ["ItemId"],
+                "str-dash": [], "ancestor-str": [], "ancestor-str-dash": [], "bin": [],
+            },
+            "BaseItems": {
+                "str": [
+                    "Id",
+                    "ParentId",
+                    "SeasonId",
+                    "SeriesId",
+                    "OwnerId"
                 ],
-            },
-            "ItemValues": {
-                "bin": [
-                    "ItemId",
-                ],
-            },
-            "Peoples": { # Changed from People
-                "bin": [
-                    "ItemId",
-                ],
-            },
-            "BaseItems": { # Changed from TypedBaseItems
-                "str": [],
                 "str-dash": [],
                 "ancestor-str": [
                     "TopParentId",
                     "PresentationUniqueKey",
                     "SeriesPresentationUniqueKey",
                 ],
-                "ancestor-str-dash": [
-                    "UserDataKey",
-                    "ExtraIds",
-                ],
-                "bin": [
-                    # guid likely changed to Id. 
-                    # If migration fails here, check column names using debug script.
-                    "Id", 
-                    "ParentId",
-                    "SeasonId",
-                    "SeriesId",
-                    "OwnerId"
-                ],
-            },
-            "UserData": { # Changed from UserDatas
-                "ancestor-str-dash": [
-                    "Key", # Case sensitive check might be needed
-                ],
+                # CHANGED: UserDataKey and ExtraIds removed (columns no longer exist)
+                "ancestor-str-dash": [],
                 "bin": [],
             },
-            # mediaattachments seems missing list, removing or leaving empty
-            "MediaStreamInfos": { # Changed from mediastreams
-                "bin": [
-                    "ItemId",
-                ],
+            # CHANGED: Updated to use ItemId directly
+            "UserData": {
+                "str": ["ItemId"],
+                "str-dash": [], "ancestor-str": [], "ancestor-str-dash": [], "bin": [],
+            },
+            "MediaStreamInfos": {
+                "str": ["ItemId"],
+                "str-dash": [], "ancestor-str": [], "ancestor-str-dash": [], "bin": [],
             },
         },
     },
     {
         "source": source_root / "data/playback_reporting.db",
-        "target": "auto-existing",             # If you used "auto" in todo_list_paths, leave this on "auto-existing". Otherwise specify same path.
-        "replacements": {"oldids": "newids"},  # Will be auto-generated during the migration.
+        "target": "auto-existing",
+        "replacements": {"oldids": "newids"},
         "tables": {
             "PlaybackActivity": {
                 "str": [],
