@@ -1,0 +1,178 @@
+# Jellyfin Migrator Configuration
+# Copy this file to config.yaml and edit for your migration.
+#
+# This example shows a migration from Windows to macOS.
+# Adjust paths for your specific setup.
+
+logging:
+  file: "./jf-migrator.log"
+  backup_count: 20
+  level: INFO  # DEBUG for more verbose output
+
+roots:
+  # Original Jellyfin installation path (as it was before copying)
+  original: "C:/ProgramData/Jellyfin/Server"
+
+  # Where the script reads files from (can be a copy of original)
+  source: "D:/Jellyfin/Server"
+
+  # Where the migrated database will be created
+  target: "D:/Jellyfin-migrated"
+
+# Path replacements as seen by Jellyfin
+# Order matters! More specific paths should come before general ones.
+path_replacements:
+  target_slash: "/"  # "/" for Linux/Mac, "\\" for Windows
+
+  mappings:
+    # Media library paths - map old locations to new
+    - source: "G:/media/anime"
+      target: "/Volumes/storage/media/anime"
+    - source: "G:/media/movies"
+      target: "/Volumes/storage/media/movies"
+    - source: "G:/media/series"
+      target: "/Volumes/storage/media/series"
+
+    # Jellyfin server paths
+    # More specific paths first
+    - source: "C:/ProgramData/Jellyfin/Server/config"
+      target: "/Users/myuser/Library/Application Support/jellyfin/config"
+    - source: "C:/ProgramData/Jellyfin/Server/cache"
+      target: "/Users/myuser/Library/Application Support/jellyfin/cache"
+    - source: "C:/ProgramData/Jellyfin/Server/log"
+      target: "/Users/myuser/Library/Application Support/jellyfin/log"
+    # General server path last (catches remaining)
+    - source: "C:/ProgramData/Jellyfin/Server"
+      target: "/Users/myuser/Library/Application Support/jellyfin"
+
+    # FFmpeg path
+    - source: "C:/Program Files/Jellyfin/Server/ffmpeg.exe"
+      target: "/usr/local/bin/ffmpeg"
+
+  # Special Jellyfin path variables
+  special_paths:
+    AppDataPath: "/Users/myuser/Library/Application Support/jellyfin/data"
+    MetadataPath: "/Users/myuser/Library/Application Support/jellyfin/metadata"
+
+# Filesystem path mappings
+# Used by the script to access files (needed for date updates)
+# If running script on same machine as target, these may be empty
+fs_path_replacements:
+  target_slash: "/"
+  log_no_warnings: false  # Set true to suppress unmapped path warnings
+
+  mappings: []
+    # Example for Docker or network paths:
+    # - source: "/data/movies"
+    #   target: "Y:/Movies"
+
+  special_paths:
+    AppDataPath: "/Users/myuser/Library/Application Support/jellyfin/data"
+    MetadataPath: "/Users/myuser/Library/Application Support/jellyfin/metadata"
+
+# Files to process for path updates (Step 1)
+todo_list_paths:
+  # Main Jellyfin database - process specific tables
+  - source: "data/jellyfin.db"
+    target: auto
+    tables:
+      BaseItems:
+        path_columns: ["Path"]
+      MediaStreamInfos:
+        path_columns: ["Path"]
+      Chapters:
+        jf_image_columns: ["ImagePath"]
+      ImageInfos:
+        path_columns: ["Path"]
+
+  # Copy other database files without processing
+  - source: "data/*.db"
+    target: auto
+    copy_only: true
+    no_log: true
+
+  # Process JSON files in plugins
+  - source: "plugins/**/*.json"
+    target: auto
+
+  # Process XML config files
+  - source: "config/*.xml"
+    target: auto
+
+  # Process NFO metadata files
+  - source: "metadata/**/*.nfo"
+    target: auto
+
+  # Process root default files
+  - source: "root/**/*.*"
+    target: auto
+
+  # Process collection and playlist files
+  - source: "data/collections/**/collection.xml"
+    target: auto
+
+  - source: "data/playlists/**/playlist.xml"
+    target: auto
+
+  # Copy everything else
+  - source: "**/*.*"
+    target: auto
+    copy_only: true
+    no_log: true
+
+# Files to process for ID path renaming (Step 3)
+todo_list_id_paths:
+  - source: "data/jellyfin.db"
+    target: auto-existing
+    tables:
+      BaseItems:
+        path_columns: ["Path"]
+      MediaStreamInfos:
+        path_columns: ["Path"]
+      Chapters:
+        jf_image_columns: ["ImagePath"]
+      ImageInfos:
+        path_columns: ["Path"]
+
+  - source: "config/*.xml"
+    target: auto-existing
+
+  - source: "metadata/**/*"
+    target: auto-existing
+
+  - source: "root/**/*"
+    target: auto-existing
+
+  - source: "data/**/*"
+    target: auto-existing
+
+# Database tables for ID updates (Step 4)
+# NOTE: Jellyfin 10.11+ stores IDs as strings, not binary blobs
+todo_list_ids:
+  - source: "data/jellyfin.db"
+    target: auto-existing
+    tables:
+      AncestorIds:
+        str: ["ItemId", "ParentItemId"]
+      Chapters:
+        str: ["ItemId"]
+      # Changed from ItemValues in older versions
+      ItemValuesMap:
+        str: ["ItemId"]
+      # Changed from Peoples in older versions
+      PeopleBaseItemMap:
+        str: ["ItemId"]
+      BaseItems:
+        str: ["Id", "ParentId", "SeasonId", "SeriesId", "OwnerId"]
+        ancestor_str: ["TopParentId", "PresentationUniqueKey", "SeriesPresentationUniqueKey"]
+      UserData:
+        str: ["ItemId"]
+      MediaStreamInfos:
+        str: ["ItemId"]
+
+  # Playback Reporting plugin (if installed)
+  - source: "data/playback_reporting.db"
+    target: auto-existing
+    tables:
+      PlaybackActivity:
+        ancestor_str: ["ItemId"]
