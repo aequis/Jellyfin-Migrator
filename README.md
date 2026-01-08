@@ -2,6 +2,8 @@
 
 Script to migrate an entire Jellyfin database. 
 
+**Update 2025-01-08: I've forked the project because it wasn't working with Jellyfin 10.11. I was getting an error about a missing "TypedBaseItems" table. I've made some changes so it *should* work with the new database structure, but I'm not sure if it works 100% yet. -aequis**
+
 **Update 2022-10-21: Confirmed! I successfully migrated my entire Jellyfin 10.8 installation from Windows to Docker on Linux.**
 
 ## Index
