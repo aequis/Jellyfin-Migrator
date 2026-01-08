@@ -1339,6 +1339,44 @@ def rotate_logs():
         except OSError as e:
             print(f"Warning: Could not rotate current log: {e}")
 
+def verify_inputs(src_root: Path, replacements: dict):
+    print_log("Verifying input paths...")
+
+    if not src_root.exists():
+        print_log(f"CRITICAL ERROR: Source Root path not found: {src_root}")
+        print_log("   Please check the 'source_root' variable at the top of the script.")
+        sys.exit(1)
+
+    missing_media = []
+
+    ignore_keys = ["target_path_slash", "log_no_warnings"]
+
+    for src_path_str in replacements.keys():
+        if src_path_str in ignore_keys or src_path_str.startswith("%"):
+            continue
+
+        src_path = Path(src_path_str)
+
+        if not src_path.exists():
+            missing_media.append(src_path_str)
+
+    if missing_media:
+        print_log("------------------------------------------------")
+        print_log("WARNING: The following source paths defined in 'path_replacements'")
+        print_log("            could not be found on this system:")
+        for p in missing_media:
+            print_log(f"   - {p}")
+        print_log("------------------------------------------------")
+        print_log("If you are migrating these libraries, Step 5 (Date Updates) will fail for them.")
+        print_log("If these are old libraries you no longer use, you can ignore this.")
+
+        response = input("Do you want to continue anyway? [y/N] ")
+        if response.lower() != 'y':
+            print_log("Aborting.")
+            sys.exit(1)
+    else:
+        print_log("All source paths verified.")
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Jellyfin Migrator')
     subparsers = parser.add_subparsers(dest='command', title='Commands')
@@ -1358,6 +1396,8 @@ if __name__ == "__main__":
 
     if args.reset:
         reset_state()
+
+    verify_inputs(source_root, path_replacements)
 
     if args.skip_disk_check:
         print_log("Skipping disk space check as requested.")
