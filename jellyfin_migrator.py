@@ -1341,9 +1341,15 @@ def rotate_logs():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Jellyfin Migrator')
+    subparsers = parser.add_subparsers(dest='command', title='Commands')
+    migrate_parser = subparsers.add_parser('migrate', help='Start the migration process')
     parser.add_argument('--reset', action='store_true', help='Reset progress and start over')
     parser.add_argument('--skip-disk-check', action='store_true', help='Skip the free space calculation')
     args = parser.parse_args()
+
+    if args.command != 'migrate':
+        parser.print_help()
+        sys.exit(0)
 
     rotate_logs()
 
