@@ -21,6 +21,8 @@ import json
 import hashlib
 import binascii
 import xml.etree.ElementTree as ET
+import argparse
+import sys
 from pathlib import Path
 from shutil import copy
 from time import time
@@ -810,14 +812,18 @@ def get_target(
             elif usure == "a":
                 # Don't warn about this anymore.
                 user_wants_inplace_warning = False
+        pass
     elif not skip_copy:
         if not target.parent.exists():
             target.parent.mkdir(parents=True)
-        if not no_log:
-            print_log("Copying...", target, end=" ")
-        copy(source, target)
-        if not no_log:
-            print_log("Done.")
+        if target.exists():
+            pass
+        else:
+            if not no_log:
+                print_log("Copying...", target, end=" ")
+            copy(source, target)
+            if not no_log:
+                print_log("Done.")
     return target
 
 
@@ -1170,7 +1176,13 @@ def update_file_dates():
     con = sqlite3.connect(library_db_target_path)
     cur = con.cursor()
 
-    rows = [r for r in cur.execute("SELECT `rowid`, `Path`, `DateCreated`, `DateModified` FROM `TypedBaseItems`")]
+    # FIX: Changed TypedBaseItems -> BaseItems
+    try:
+        query = "SELECT `rowid`, `Path`, `DateCreated`, `DateModified` FROM `BaseItems`"
+        rows = [r for r in cur.execute(query)]
+    except sqlite3.OperationalError:
+        print_log("Error reading BaseItems. Checking table name...")
+        return
 
     progress = 0
     rowcount = len(rows)
@@ -1178,28 +1190,21 @@ def update_file_dates():
 
     for rowid, target, date_created, date_modified in rows:
         progress += 1
-        # Print the progress every second. Note: this is the only usage of the "progress" variable.
-        now = time()
-        if now - t > 1:
+        if time() - t > 1:
             print_log(f"Progress: {progress} / {rowcount} rows")
-            t = now
+            t = time()
 
         if not target:
             continue
-        # Determine file path as seen by this script (see fs_path_replacements for details)
-        # Code taken from get_target
+
         target, idgaf1, idgaf2 = recursive_root_path_replacer(target, to_replace=fs_path_replacements)
         target = Path(target)
         if not target.is_absolute():
             if target.is_relative_to("/"):
-                # Otherwise the line below will make target relative to the _root_ of target_root
-                # instead of relative to target_root.
                 target = target.relative_to("/")
             target = target_root / target
-        # End of code taken from get_target
 
         if not target.exists():
-            print_log("File doesn't seem to exist; can't update its dates in the database: ", target)
             continue
 
         date_created_ns  = jf_date_str_to_python_ns(date_created)
@@ -1208,71 +1213,111 @@ def update_file_dates():
         if date_created_ns >= 0 and date_modified_ns >= 0:
             continue
 
-        filestats = os.stat(target)
+        try:
+            filestats = os.stat(target)
+        except OSError:
+            continue
 
+        # FIX: Changed TypedBaseItems -> BaseItems in UPDATE statements
         if date_created_ns < 0:
             new_date_created = get_datestr_from_python_time_ns(filestats.st_ctime_ns)
-            cur.execute("UPDATE `TypedBaseItems` SET `DateCreated` = ? WHERE `rowid` = ?",
+            cur.execute("UPDATE `BaseItems` SET `DateCreated` = ? WHERE `rowid` = ?",
                         (new_date_created, rowid))
         if date_modified_ns < 0:
             new_date_modified = get_datestr_from_python_time_ns(filestats.st_mtime_ns)
-            cur.execute("UPDATE `TypedBaseItems` SET `DateModified` = ? WHERE `rowid` = ?",
+            cur.execute("UPDATE `BaseItems` SET `DateModified` = ? WHERE `rowid` = ?",
                         (new_date_modified, rowid))
 
     con.commit()
     print_log("Done.")
 
+STATE_FILE = "migration_state.json"
+
+def load_state():
+    if os.path.exists(STATE_FILE):
+        with open(STATE_FILE, 'r') as f:
+            return set(json.load(f))
+    return set()
+
+def save_state(completed_step):
+    current_state = load_state()
+    current_state.add(completed_step)
+    with open(STATE_FILE, 'w') as f:
+        json.dump(list(current_state), f)
+
+def reset_state():
+    if os.path.exists(STATE_FILE):
+        os.remove(STATE_FILE)
+    print_log("Progress reset. Script will start from the beginning.")
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Jellyfin Migrator')
+    parser.add_argument('--reset', action='store_true', help='Reset progress and start over')
+    args = parser.parse_args()
+
     print_log("")
     print_log("Starting Jellyfin Database Migration")
 
-    ### Copy relevant files and adjust all paths to the new locations.
-    process_files(
-        todo_list_paths,
-        process_func=process_file,
-        replace_func=recursive_root_path_replacer,
-        path_replacements=path_replacements,
-    )
+    if args.reset:
+        reset_state()
 
-    ### Update IDs
-    # Generate IDs based on those new paths and save them in the global variable
+    completed_steps = load_state()
+
+    if "step_paths" in completed_steps:
+        print_log("Step 1 (Path Migration) already completed. Skipping.")
+    else:
+        print_log(">>> Executing Step 1: Copying files and updating paths...")
+        process_files(
+            todo_list_paths,
+            process_func=process_file,
+            replace_func=recursive_root_path_replacer,
+            path_replacements=path_replacements,
+        )
+        save_state("step_paths")
+        print_log("Step 1 Complete.")
+
+    print_log(">>> Loading/Calculating IDs (Required for subsequent steps)...")
     get_ids()
-    # ID types occurring in paths (<- search for that to find another comment with more details if you missed it)
-    # Include/Exclude types (see get_ids) to specify which are used for looking through paths.
-    # Currently, all are included, just to be safe.
+
     id_replacements_path = {**ids["ancestor-str"], **ids["ancestor-str-dash"], **ids["str"], **ids["str-dash"],
                             "target_path_slash": path_replacements["target_path_slash"]}
 
-    # To (mostly) reuse the same functions from step 1, the replacements dict needs to be updated with
-    # id_replacements_path. It can't be replaced since it's also used to find the files (which uses the
-    # same source -> target processing/conversion as step 1). In theory this alters the process since
-    # the dict used to convert from source -> target is different, in reality, this is not an issue,
-    # since step 1 only processes the roots of the paths (which cannot be similar to anything in
-    # id_replacements_path).
     for i, job in enumerate(todo_list_id_paths):
         todo_list_id_paths[i]["replacements"] = id_replacements_path
 
-    # Replace all paths with ids - both in the file system and within files.
-    process_files(
-        todo_list_id_paths,
-        process_func=process_file,
-        replace_func=recursive_id_path_replacer,
-        path_replacements={**path_replacements, **id_replacements_path},
-    )
-    # Clean up empty folders that may be left behind in the target directory
-    #delete_empty_folders(target_root)
+    if "step_id_paths" in completed_steps:
+        print_log("Step 3 (ID Path Renaming) already completed. Skipping.")
+    else:
+        print_log(">>> Executing Step 3: Renaming files/folders based on new IDs...")
+        process_files(
+            todo_list_id_paths,
+            process_func=process_file,
+            replace_func=recursive_id_path_replacer,
+            path_replacements={**path_replacements, **id_replacements_path},
+        )
+        save_state("step_id_paths")
+        print_log("Step 3 Complete.")
 
-    # Replace remaining ids.
-    process_files(
-        todo_list_ids,
-        process_func=update_db_table_ids,
-        replace_func=None,
-        path_replacements = path_replacements,
-    )
+    if "step_db_ids" in completed_steps:
+        print_log("Step 4 (Database ID Updates) already completed. Skipping.")
+    else:
+        print_log(">>> Executing Step 4: Updating IDs inside database tables...")
+        process_files(
+            todo_list_ids,
+            process_func=update_db_table_ids,
+            replace_func=None,
+            path_replacements=path_replacements,
+        )
+        save_state("step_db_ids")
+        print_log("Step 4 Complete.")
 
-    # Finally, update the file dates in the db.
-    update_file_dates()
+    if "step_dates" in completed_steps:
+        print_log("Step 5 (Date Updates) already completed. Skipping.")
+    else:
+        print_log(">>> Executing Step 5: Updating file modification dates...")
+        update_file_dates()
+        save_state("step_dates")
+        print_log("Step 5 Complete.")
 
     print_log("")
     print_log("Jellyfin Database Migration complete.")
